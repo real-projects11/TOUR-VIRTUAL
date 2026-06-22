@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>VISOR // TOUR 2.5D — PROTOTYPE</title>
+
+<!-- ============================================================
+     CDNs
+     - Transformers.js v3 (ESM, vía import dinámico en módulo)
+     - PixiJS v7
+============================================================ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+
+<style>
+  :root{
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --line: #2b2b2b;
+    --fg: #e8e8e8;
+    --fg-dim: #8a8a8a;
+    --accent: #ff3b1f;
+    --accent-2: #00ff9c;
+    --mono: 'JetBrains Mono', 'Fira Code', 'IBM Plex Mono', monospace;
+  }
+
+  @font-face {
+    font-family: 'JetBrains Mono';
+    src: local('JetBrains Mono');
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0; padding:0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    height: 100%;
+    overflow: hidden;
+    -webkit-font-smoothing: none;
+  }
+
+  /* ---------- LAYOUT BRUTALISTA ---------- */
+  #app-shell{
+    display:grid;
+    grid-template-rows: auto 1fr auto;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  header{
+    border-bottom: 1px solid var(--line);
+    padding: 14px 20px;
+    display:flex;
+    justify-content: space-between;
+    align-items: baseline;
+    background: var(--panel);
+  }
+
+  header h1{
+    font-size: 14px;
+    letter-spacing: 2px;
+    margin:0;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  header h1 span{ color: var(--accent); }
+
+  header .status-tag{
+    font-size: 11px;
+    color: var(--fg-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  header .status-tag b{
+    color: var(--accent-2);
+    font-weight: 700;
+  }
+
+  main{
+    position: relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow: hidden;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0 1px, transparent 1px 40px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0 1px, transparent 1px 40px);
+  }
+
+  #canvas-host{
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  #pixi-mount{
+    border: 1px solid var(--line);
+    box-shadow: 0 0 0 1px #000, 0 20px 60px rgba(0,0,0,0.6);
+    display:none;
+    line-height:0;
+  }
+
+  #pixi-mount canvas{
+    display:block;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  /* ---------- PANEL DE BIENVENIDA / UPLOAD ---------- */
+  #intro-panel{
+    width: min(520px, 90vw);
+    border: 1px solid var(--line);
+    background: var(--panel);
+    padding: 28px;
+    text-align: left;
+  }
+
+  #intro-panel .tag{
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  #intro-panel h2{
+    font-size: 18px;
+    margin: 0 0 14px 0;
+    line-height: 1.4;
+  }
+
+  #intro-panel p{
+    font-size: 12px;
+    color: var(--fg-dim);
+    line-height: 1.7;
+    margin: 0 0 22px 0;
+  }
+
+  .btn{
+    font-family: var(--mono);
+    background: var(--fg);
+    color: #000;
+    border: none;
+    padding: 12px 18px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.08s ease, background 0.15s ease;
+    width: 100%;
+  }
+
+  .btn:hover:not(:disabled){ background: var(--accent-2); }
+  .btn:active:not(:disabled){ transform: scale(0.98); }
+
+  .btn:disabled{
+    background: var(--line);
+    color: var(--fg-dim);
+    cursor: not-allowed;
+  }
+
+  .btn.secondary{
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--line);
+  }
+  .btn.secondary:hover:not(:disabled){
+    background: var(--line);
+    color: var(--fg);
+  }
+
+  #file-input{ display:none; }
+
+  /* ---------- BARRA DE PROGRESO ---------- */
+  .progress-wrap{
+    margin-top: 18px;
+    display:none;
+  }
+
+  .progress-wrap.active{ display:block; }
+
+  .progress-label{
+    display:flex;
+    justify-content: space-between;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    margin-bottom: 6px;
+  }
+
+  .progress-label .pct{ color: var(--accent-2); }
+
+  .progress-track{
+    height: 6px;
+    width: 100%;
+    background: #1c1c1c;
+    border: 1px solid var(--line);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .progress-fill{
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.2s ease-out;
+  }
+
+  .progress-sub{
+    margin-top: 6px;
+    font-size: 9px;
+    color: var(--fg-dim);
+    letter-spacing: 0.5px;
+    word-break: break-all;
+  }
+
+  /* ---------- HUD SOBRE EL CANVAS ---------- */
+  #hud{
+    position: absolute;
+    bottom: 18px;
+    left: 18px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    pointer-events:none;
+    display:none;
+    background: rgba(0,0,0,0.5);
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+  }
+  #hud.active{ display:block; }
+  #hud b{ color: var(--accent-2); }
+
+  #depth-preview-toggle{
+    position:absolute;
+    top: 18px;
+    right: 18px;
+    display:none;
+    gap:8px;
+  }
+  #depth-preview-toggle.active{ display:flex; }
+
+  #depth-preview-toggle button{
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: rgba(0,0,0,0.6);
+    color: var(--fg-dim);
+    border: 1px solid var(--line);
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  #depth-preview-toggle button.on{
+    color: var(--bg);
+    background: var(--accent-2);
+    border-color: var(--accent-2);
+  }
+
+  footer{
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+    padding: 10px 20px;
+    font-size: 10px;
+    color: var(--fg-dim);
+    letter-spacing: 1px;
+    display:flex;
+    justify-content: space-between;
+    text-transform: uppercase;
+  }
+
+  footer .dot{
+    display:inline-block;
+    width:6px; height:6px;
+    border-radius:50%;
+    background: var(--line);
+    margin-right:6px;
+  }
+  footer .dot.ready{ background: var(--accent-2); }
+  footer .dot.busy{ background: var(--accent); animation: blink 0.8s infinite; }
+
+  @keyframes blink{ 50%{ opacity:0.3; } }
+
+  /* loader overlay para reset */
+  #error-box{
+    margin-top: 12px;
+    font-size: 11px;
+    color: var(--accent);
+    border: 1px dashed var(--accent);
+    padding: 8px;
+    display:none;
+  }
+  #error-box.active{ display:block; }
+</style>
+</head>
+<body>
+
+<div id="app-shell">
+
+  <header>
+    <h1>VISOR<span>::</span>TOUR_2.5D <span style="color:var(--fg-dim); font-weight:400;">// prototype</span></h1>
+    <div class="status-tag">
+      MODELO: <b id="model-status-tag">INICIALIZANDO</b>
+    </div>
+  </header>
+
+  <main>
+    <div id="canvas-host">
+
+      <!-- Panel de bienvenida / control -->
+      <div id="intro-panel">
+        <div class="tag">// depth-anything-v2-small · onnx · cpu</div>
+        <h2>Sube una foto de un interior. La IA estima la profundidad de la escena en tu navegador y genera un efecto de paralaje 2.5D en tiempo real.</h2>
+        <p>
+          Procesamiento 100% local (WebAssembly/ONNX Runtime). No se envían imágenes a ningún servidor.
+          Mueve el cursor (o el dedo) sobre el render para activar el efecto de profundidad.
+        </p>
+
+        <input type="file" id="file-input" accept="image/*">
+        <button class="btn" id="upload-btn" disabled>CARGANDO MODELO...</button>
+
+        <div class="progress-wrap" id="model-progress-wrap">
+          <div class="progress-label">
+            <span id="model-progress-label">Descargando pesos del modelo</span>
+            <span class="pct" id="model-progress-pct">0%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="model-progress-fill"></div></div>
+          <div class="progress-sub" id="model-progress-sub">esperando...</div>
+        </div>
+
+        <div class="progress-wrap" id="infer-progress-wrap">
+          <div class="progress-label">
+            <span id="infer-progress-label">Inferencia de profundidad</span>
+            <span class="pct" id="infer-progress-pct">0%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="infer-progress-fill"></div></div>
+          <div class="progress-sub" id="infer-progress-sub">—</div>
+        </div>
+
+        <div class="error-box" id="error-box"></div>
+      </div>
+
+      <!-- Montaje de PixiJS -->
+      <div id="pixi-mount"></div>
+
+      <div id="hud">
+        PARALLAX_ENGINE :: <b>ON</b> — mueve el mouse / toca la pantalla
+      </div>
+
+      <div id="depth-preview-toggle">
+        <button id="toggle-depth-btn">VER DEPTH MAP</button>
+        <button id="reset-btn">REINICIAR</button>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    <span><span class="dot" id="footer-dot"></span><span id="footer-text">esperando modelo</span></span>
+    <span>transformers.js v3 + pixi.js v7 · webgl/wasm</span>
+  </footer>
+
+</div>
+
+<script type="module">
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0';
+
+// =====================================================================
+// CONFIGURACIÓN DE ENTORNO — Forzar ejecución en CPU (WASM) para máxima
+// compatibilidad con dispositivos móviles y evitar dependencias de WebGPU.
+// =====================================================================
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+env.backends.onnx.wasm.proxy = false; // evitar problemas de proxy/worker en algunos navegadores móviles
+
+// ----------------------- Referencias DOM -----------------------
+const $ = (id) => document.getElementById(id);
+
+const uploadBtn        = $('upload-btn');
+const fileInput        = $('file-input');
+const modelStatusTag   = $('model-status-tag');
+
+const modelProgWrap    = $('model-progress-wrap');
+const modelProgLabel   = $('model-progress-label');
+const modelProgPct     = $('model-progress-pct');
+const modelProgFill    = $('model-progress-fill');
+const modelProgSub     = $('model-progress-sub');
+
+const inferProgWrap    = $('infer-progress-wrap');
+const inferProgPct     = $('infer-progress-pct');
+const inferProgFill    = $('infer-progress-fill');
+const inferProgSub     = $('infer-progress-sub');
+
+const introPanel       = $('intro-panel');
+const pixiMount        = $('pixi-mount');
+const hud              = $('hud');
+const depthToggleWrap  = $('depth-preview-toggle');
+const toggleDepthBtn   = $('toggle-depth-btn');
+const resetBtn         = $('reset-btn');
+
+const errorBox         = $('error-box');
+
+const footerDot        = $('footer-dot');
+const footerText       = $('footer-text');
+
+// ----------------------- Estado global -----------------------
+let depthEstimator = null;
+let pixiApp = null;
+let originalSprite = null;
+let displacementSprite = null;
+let displacementFilter = null;
+let isDepthPreview = false;
+let depthDataUrlCache = null;
+
+const MAX_DIM = 1024; // límite de tamaño de render para mantener fluidez
+
+// ----------------------- Helpers UI -----------------------
+function setFooter(text, state){
+  footerText.textContent = text;
+  footerDot.className = 'dot' + (state ? ' ' + state : '');
+}
+
+function showError(msg){
+  errorBox.textContent = '! ERROR: ' + msg;
+  errorBox.classList.add('active');
+}
+
+function clearError(){
+  errorBox.classList.remove('active');
+  errorBox.textContent = '';
+}
+
+// =====================================================================
+// 1. CARGA DEL MODELO (Transformers.js v3 — pipeline de depth-estimation)
+// =====================================================================
+async function initModel(){
+  setFooter('descargando modelo de profundidad...', 'busy');
+  modelProgWrap.classList.add('active');
+
+  try {
+    depthEstimator = await pipeline(
+      'depth-estimation',
+      'onnx-community/depth-anything-v2-small',
+      {
+        device: 'wasm',      // Forzar CPU/WASM — máxima compatibilidad móvil
+        dtype: 'fp32',
+        progress_callback: (data) => {
+          handleModelProgress(data);
+        }
+      }
+    );
+
+    modelStatusTag.textContent = 'LISTO';
+    modelProgLabel.textContent = 'Modelo cargado en memoria';
+    modelProgPct.textContent = '100%';
+    modelProgFill.style.width = '100%';
+    modelProgSub.textContent = 'onnx-community/depth-anything-v2-small · backend: wasm (cpu)';
+
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'SUBIR FOTO 2D';
+    setFooter('modelo listo · esperando imagen', 'ready');
+
+  } catch (err) {
+    console.error(err);
+    showError('No se pudo cargar el modelo IA. ' + (err?.message || err));
+    modelStatusTag.textContent = 'ERROR';
+    setFooter('fallo al cargar el modelo', 'busy');
+  }
+}
+
+function handleModelProgress(data){
+  // data.status puede ser: 'initiate', 'download', 'progress', 'done', 'ready'
+  if (data.status === 'initiate') {
+    modelProgLabel.textContent = 'Iniciando descarga: ' + (data.file || 'archivo');
+  }
+  if (data.status === 'progress' && typeof data.progress === 'number') {
+    const pct = Math.min(100, Math.round(data.progress));
+    modelProgFill.style.width = pct + '%';
+    modelProgPct.textContent = pct + '%';
+    modelProgLabel.textContent = 'Descargando: ' + (data.file || 'pesos del modelo');
+    const loadedMB = data.loaded ? (data.loaded / (1024*1024)).toFixed(1) : '?';
+    const totalMB = data.total ? (data.total / (1024*1024)).toFixed(1) : '?';
+    modelProgSub.textContent = `${loadedMB} MB / ${totalMB} MB`;
+  }
+  if (data.status === 'done') {
+    modelProgSub.textContent = (data.file || '') + ' — completado';
+  }
+}
+
+// =====================================================================
+// 2. SUBIDA DE IMAGEN + INFERENCIA DE PROFUNDIDAD
+// =====================================================================
+uploadBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  clearError();
+
+  try {
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'PROCESANDO...';
+    inferProgWrap.classList.add('active');
+    inferProgFill.style.width = '5%';
+    inferProgPct.textContent = '5%';
+    inferProgSub.textContent = 'leyendo archivo...';
+    setFooter('procesando imagen...', 'busy');
+
+    const imageUrl = await readFileAsDataURL(file);
+    const resizedImage = await resizeImageIfNeeded(imageUrl, MAX_DIM);
+
+    inferProgFill.style.width = '20%';
+    inferProgPct.textContent = '20%';
+    inferProgSub.textContent = 'ejecutando inferencia en CPU (puede tardar unos segundos)...';
+
+    // Pequeño respiro para que la UI pinte el estado antes de bloquear con inferencia
+    await nextFrame();
+
+    const depthResult = await runDepthInference(resizedImage);
+
+    inferProgFill.style.width = '90%';
+    inferProgPct.textContent = '90%';
+    inferProgSub.textContent = 'construyendo escena 2.5D...';
+    await nextFrame();
+
+    await buildPixiScene(resizedImage.dataUrl, depthResult.depthUrl, resizedImage.width, resizedImage.height);
+
+    inferProgFill.style.width = '100%';
+    inferProgPct.textContent = '100%';
+    inferProgSub.textContent = 'listo';
+
+    revealScene();
+
+  } catch (err) {
+    console.error(err);
+    showError('Fallo en el procesamiento de la imagen. ' + (err?.message || err));
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'SUBIR FOTO 2D';
+    setFooter('error en el procesamiento', 'busy');
+  } finally {
+    fileInput.value = '';
+  }
+});
+
+function readFileAsDataURL(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function nextFrame(){
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+// Reescala la imagen en un canvas oculto para acotar el coste de inferencia
+function resizeImageIfNeeded(dataUrl, maxDim){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve({ dataUrl: canvas.toDataURL('image/png'), width, height });
+    };
+    img.onerror = () => reject(new Error('Imagen inválida.'));
+    img.src = dataUrl;
+  });
+}
+
+// Ejecuta el pipeline de depth-estimation y convierte el resultado en una
+// imagen en escala de grises (mapa de desplazamiento) lista para PixiJS.
+async function runDepthInference(resizedImage){
+  if (!depthEstimator) throw new Error('El modelo aún no está listo.');
+
+  const output = await depthEstimator(resizedImage.dataUrl);
+  // output.depth es un objeto RawImage (escala de grises) de Transformers.js
+
+  const depthUrl = await rawDepthToDataUrl(output.depth, resizedImage.width, resizedImage.height);
+  return { depthUrl };
+}
+
+// Convierte el RawImage de profundidad a un dataURL PNG en escala de grises,
+// re-muestreado al tamaño exacto de la imagen original.
+function rawDepthToDataUrl(rawImage, targetW, targetH){
+  return new Promise((resolve) => {
+    const srcW = rawImage.width;
+    const srcH = rawImage.height;
+    const channels = rawImage.channels || 1;
+    const data = rawImage.data;
+
+    // canvas temporal con la resolución nativa de salida del modelo
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = srcW;
+    tmpCanvas.height = srcH;
+    const tmpCtx = tmpCanvas.getContext('2d');
+    const imageData = tmpCtx.createImageData(srcW, srcH);
+
+    for (let i = 0; i < srcW * srcH; i++) {
+      const v = data[i * channels]; // canal de profundidad (0-255)
+      imageData.data[i * 4 + 0] = v;
+      imageData.data[i * 4 + 1] = v;
+      imageData.data[i * 4 + 2] = v;
+      imageData.data[i * 4 + 3] = 255;
+    }
+    tmpCtx.putImageData(imageData, 0, 0);
+
+    // escalar al tamaño final de la imagen original
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = targetW;
+    outCanvas.height = targetH;
+    const outCtx = outCanvas.getContext('2d');
+    outCtx.imageSmoothingEnabled = true;
+    outCtx.imageSmoothingQuality = 'high';
+    outCtx.drawImage(tmpCanvas, 0, 0, targetW, targetH);
+
+    resolve(outCanvas.toDataURL('image/png'));
+  });
+}
+
+// =====================================================================
+// 3. RENDERIZADO 2.5D CON PIXIJS — DisplacementFilter
+// =====================================================================
+async function buildPixiScene(photoUrl, depthUrl, width, height){
+  depthDataUrlCache = depthUrl;
+
+  // Limitar dimensiones de render en pantalla (responsive) sin alterar la
+  // relación de aspecto, para que se vea bien tanto en desktop como en móvil.
+  const viewportW = Math.min(window.innerWidth * 0.9, 1100);
+  const viewportH = Math.min(window.innerHeight * 0.78, 800);
+  const scale = Math.min(viewportW / width, viewportH / height, 1);
+  const renderW = Math.round(width * scale);
+  const renderH = Math.round(height * scale);
+
+  // Destruir app previa si existe (reinicio)
+  if (pixiApp) {
+    pixiApp.destroy(true, { children: true, texture: true, baseTexture: true });
+    pixiApp = null;
+    pixiMount.innerHTML = '';
+  }
+
+  pixiApp = new PIXI.Application({
+    width: renderW,
+    height: renderH,
+    backgroundColor: 0x0a0a0a,
+    antialias: true,
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    autoDensity: true,
+  });
+
+  pixiMount.appendChild(pixiApp.view);
+
+  const [photoTexture, depthTexture] = await Promise.all([
+    PIXI.Texture.fromURL(photoUrl),
+    PIXI.Texture.fromURL(depthUrl),
+  ]);
+
+  // Sprite principal (la foto del inmueble)
+  originalSprite = new PIXI.Sprite(photoTexture);
+  originalSprite.width = renderW;
+  originalSprite.height = renderH;
+  pixiApp.stage.addChild(originalSprite);
+
+  // Sprite del mapa de profundidad — usado como displacement map.
+  // El DisplacementFilter de Pixi lee los canales R/G del sprite como
+  // vector de desplazamiento (x,y). Como nuestro depth map es escala de
+  // grises, R≈G, lo que produce un desplazamiento radial proporcional a
+  // la profundidad estimada por la IA: efecto de paralaje.
+  displacementSprite = new PIXI.Sprite(depthTexture);
+  displacementSprite.width = renderW;
+  displacementSprite.height = renderH;
+  displacementSprite.texture.baseTexture.wrapMode = PIXI.WRAP_MODES.CLAMP;
+  pixiApp.stage.addChild(displacementSprite);
+  displacementSprite.visible = false; // no se ve directamente, solo alimenta al filtro
+
+  displacementFilter = new PIXI.filters.DisplacementFilter(displacementSprite);
+  displacementFilter.scale.set(0, 0); // arranca en reposo; se anima con el puntero
+  displacementFilter.padding = 40;
+
+  originalSprite.filters = [displacementFilter];
+
+  // ------------------ Interacción: mouse / touch ------------------
+  const STRENGTH = 28; // intensidad máxima del paralaje (px)
+  let targetX = 0, targetY = 0;
+  let currentX = 0, currentY = 0;
+  let pointerActive = false;
+
+  pixiApp.view.style.touchAction = 'none';
+
+  function updatePointer(clientX, clientY){
+    const rect = pixiApp.view.getBoundingClientRect();
+    const nx = (clientX - rect.left) / rect.width;   // 0..1
+    const ny = (clientY - rect.top) / rect.height;   // 0..1
+    const dx = (nx - 0.5) * 2; // -1..1
+    const dy = (ny - 0.5) * 2; // -1..1
+    targetX = dx * STRENGTH;
+    targetY = dy * STRENGTH;
+    pointerActive = true;
+  }
+
+  function resetPointer(){
+    pointerActive = false;
+    targetX = 0;
+    targetY = 0;
+  }
+
+  pixiApp.view.addEventListener('mousemove', (e) => updatePointer(e.clientX, e.clientY));
+  pixiApp.view.addEventListener('mouseleave', resetPointer);
+
+  pixiApp.view.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 0) {
+      updatePointer(e.touches[0].clientX, e.touches[0].clientY);
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  pixiApp.view.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 0) updatePointer(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+
+  pixiApp.view.addEventListener('touchend', resetPointer);
+  pixiApp.view.addEventListener('touchcancel', resetPointer);
+
+  // Loop de animación: suaviza el desplazamiento del mapa (easing),
+  // y mueve también ligeramente el sprite base en sentido contrario
+  // para reforzar la sensación de profundidad (parallax cruzado).
+  pixiApp.ticker.add(() => {
+    const ease = 0.08;
+    currentX += (targetX - currentX) * ease;
+    currentY += (targetY - currentY) * ease;
+
+    displacementSprite.x = currentX;
+    displacementSprite.y = currentY;
+
+    // contramovimiento sutil de la imagen base (sensación de cámara)
+    originalSprite.x = -currentX * 0.15;
+    originalSprite.y = -currentY * 0.15;
+  });
+}
+
+function revealScene(){
+  introPanel.style.display = 'none';
+  pixiMount.style.display = 'block';
+  hud.classList.add('active');
+  depthToggleWrap.classList.add('active');
+  setFooter('escena 2.5D activa · interactúa con el mouse / touch', 'ready');
+}
+
+// =====================================================================
+// 4. CONTROLES SECUNDARIOS: ver depth map / reiniciar
+// =====================================================================
+toggleDepthBtn.addEventListener('click', () => {
+  if (!originalSprite || !displacementSprite) return;
+  isDepthPreview = !isDepthPreview;
+
+  if (isDepthPreview) {
+    originalSprite.filters = [];
+    originalSprite.alpha = 0;
+    displacementSprite.visible = true;
+    displacementSprite.alpha = 1;
+    toggleDepthBtn.textContent = 'VER FOTO';
+    toggleDepthBtn.classList.add('on');
+  } else {
+    displacementSprite.visible = false;
+    originalSprite.alpha = 1;
+    originalSprite.filters = [displacementFilter];
+    toggleDepthBtn.textContent = 'VER DEPTH MAP';
+    toggleDepthBtn.classList.remove('on');
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  isDepthPreview = false;
+  toggleDepthBtn.textContent = 'VER DEPTH MAP';
+  toggleDepthBtn.classList.remove('on');
+
+  if (pixiApp) {
+    pixiApp.destroy(true, { children: true, texture: true, baseTexture: true });
+    pixiApp = null;
+  }
+  pixiMount.innerHTML = '';
+  pixiMount.style.display = 'none';
+  hud.classList.remove('active');
+  depthToggleWrap.classList.remove('active');
+
+  introPanel.style.display = 'block';
+  inferProgWrap.classList.remove('active');
+  inferProgFill.style.width = '0%';
+  inferProgPct.textContent = '0%';
+  inferProgSub.textContent = '—';
+
+  uploadBtn.disabled = false;
+  uploadBtn.textContent = 'SUBIR FOTO 2D';
+  setFooter('modelo listo · esperando imagen', 'ready');
+});
+
+// Reajustar tamaño del canvas si cambia el viewport (orientación móvil, etc.)
+window.addEventListener('resize', () => {
+  // El prototipo no re-genera la inferencia en resize; solo evita overflow.
+  if (pixiApp) {
+    const viewportW = Math.min(window.innerWidth * 0.9, 1100);
+    const viewportH = Math.min(window.innerHeight * 0.78, 800);
+    const w = pixiApp.view.width / (window.devicePixelRatio || 1);
+    const h = pixiApp.view.height / (window.devicePixelRatio || 1);
+    const fit = Math.min(viewportW / w, viewportH / h, 1);
+    pixiMount.style.transform = `scale(${fit})`;
+    pixiMount.style.transformOrigin = 'center center';
+  }
+});
+
+// ----------------------- Arranque -----------------------
+initModel();
+</script>
+
+</body>
+</html>
